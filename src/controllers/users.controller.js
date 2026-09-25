@@ -32,4 +32,32 @@ async function getById(req, res) {
   res.json(rows[0]);
 }
 
-module.exports = { getMe, updateMe, getById };
+// GET /api/admin/users  (chỉ admin — is_admin() trong RLS đã cho phép đọc
+// toàn bộ bảng users, nên chỉ cần route này + requireRole('admin') ở tầng
+// route để trả lỗi rõ ràng sớm cho client)
+async function list(req, res) {
+  const { rows } = await req.db.query(
+    `SELECT u.id, u.name, u.email_address, u.username, u.phone_number,
+            u.is_verified, u.is_active, u.created_at,
+            EXISTS (SELECT 1 FROM customers c WHERE c.user_id = u.id) AS is_customer,
+            EXISTS (SELECT 1 FROM workers w WHERE w.user_id = u.id) AS is_worker,
+            EXISTS (SELECT 1 FROM admins a WHERE a.user_id = u.id) AS is_admin
+     FROM users u
+     ORDER BY u.created_at DESC`
+  );
+  res.json(rows);
+}
+
+// PATCH /api/admin/users/:id/active  (khoá/mở tài khoản)
+// body: { is_active: 0 | 1 }
+async function updateActive(req, res) {
+  const { is_active } = req.body;
+  const { rows } = await req.db.query(
+    'UPDATE users SET is_active = $1 WHERE id = $2 RETURNING id, name, is_active',
+    [is_active, req.params.id]
+  );
+  if (!rows[0]) return res.status(404).json({ error: 'Không tìm thấy user.' });
+  res.json(rows[0]);
+}
+
+module.exports = { getMe, updateMe, getById, list, updateActive };
